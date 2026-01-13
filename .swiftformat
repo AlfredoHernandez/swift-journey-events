@@ -1,0 +1,28 @@
+# Project's Swift format configuration file
+
+# Format options
+--acronyms ID,URL,UUID
+--allman false
+--maxwidth 160
+--wraparguments before-first
+--wrapparameters before-first
+--ifdef no-indent
+--header "//\n//  Copyright © {year} Jesús Alfredo Hernández Alarcón. All rights reserved.\n//"
+--elseposition same-line
+--importgrouping testable-first
+--someany true
+
+# Format options: Marktypes
+--marktypes always
+--typemark "MARK: - %t"
+--markextensions always
+--extensionmark "MARK: - %t + %c"
+--groupedextension "MARK: %c"
+
+# Rules
+--disable enumNamespaces
+--enable redundantOptionalBinding
+--enable spaceInsideBraces
+--enable redundantRawValues
+--enable acronyms,blankLinesBetweenImports,isEmpty
+--enable initCoderUnavailable
