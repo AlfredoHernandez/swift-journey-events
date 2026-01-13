@@ -33,14 +33,14 @@ struct NewsFeedView: View {
     }
 
     private func trackFeedOpened() async {
-        await eventTracker.recordStep("feed_opened")
-        await eventTracker.recordStep("app_launched")
+        await eventTracker.recordStep(.feedOpened)
+        await eventTracker.recordStep(.appLaunched)
     }
 
     private func handleShare(article: Article) {
         Task {
             await eventTracker.recordStep(
-                "article_shared",
+                .articleShared,
                 parameters: ["article_id": AnyHashableSendable(article.id)],
             )
         }

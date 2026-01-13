@@ -15,10 +15,6 @@ final class AlertManager {
 
     func handlePolicyTrigger(_ evaluation: PolicyEvaluation) {
         switch evaluation.actionKey {
-        case "article_read_ad":
-            alertTitle = "article_read_ad"
-            alertMessage = "You've read 2 articles! Showing interstitial ad."
-
         case "article_viewed_subscription":
             alertTitle = "article_viewed_subscription"
             alertMessage = "You've viewed 3 articles! Subscribe to Premium."

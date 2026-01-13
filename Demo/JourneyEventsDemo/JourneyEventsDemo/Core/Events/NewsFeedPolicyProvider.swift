@@ -13,7 +13,6 @@ import JourneyEvents
 ///
 /// | Policy ID | Trigger | Threshold | Cooldown |
 /// |-----------|---------|-----------|----------|
-/// | `article_read_ad` | Read articles | 2 | None |
 /// | `article_viewed_subscription` | View articles | 3 | None |
 /// | `engagement_journey` | Feed → View → Share | 1 | None |
 /// | `category_recommendation` | Same category views | 2 | None |
@@ -21,23 +20,13 @@ import JourneyEvents
 final class NewsFeedPolicyProvider: PolicyProvider, @unchecked Sendable {
     func getActivePolicies() -> [EventPolicy] {
         [
-            // Show interstitial ad after reading 2 articles (scroll 70%+)
-            EventPolicy(
-                id: "article_read_ad",
-                actionKey: "article_read_ad",
-                pattern: JourneyPattern(steps: ["article_read"]),
-                threshold: 2,
-                cooldownMinutes: 0,
-                persistAcrossSessions: false,
-            ),
-
             // Show subscription prompt after viewing 3 articles
             EventPolicy(
                 id: "article_viewed_subscription",
                 actionKey: "article_viewed_subscription",
                 pattern: JourneyPattern(steps: ["article_viewed"]),
                 threshold: 3,
-                cooldownMinutes: 0,
+                cooldownMinutes: 1,
                 persistAcrossSessions: false,
             ),
 
