@@ -69,54 +69,58 @@ public struct OSLogJourneyLogger: JourneyLogger {
         let timestamp = dateFormatter.string(from: Date(timeIntervalSince1970: Double(step.timestamp) / 1000))
         let params = formatParameters(step.parameters)
 
-        logger.debug("╔═══════════════════════════════════════════════════════════════")
-        logger.debug("║ JOURNEY STEP RECORDED")
-        logger.debug("╠═══════════════════════════════════════════════════════════════")
-        logger.debug("║ Step: \(step.name)")
-        logger.debug("║ Parameters: \(params)")
-        logger.debug("║ Timestamp: \(timestamp)")
-        logger.debug("╚═══════════════════════════════════════════════════════════════")
+        logger.debug("""
+        ╔═══════════════════════════════════════════════════════════════
+        ║ JOURNEY STEP RECORDED
+        ╠═══════════════════════════════════════════════════════════════
+        ║ Step: \(step.name)
+        ║ Parameters: \(params)
+        ║ Timestamp: \(timestamp)
+        ╚═══════════════════════════════════════════════════════════════
+        """)
     }
 
     public func logPolicyEvaluated(_ evaluation: PolicyEvaluation) {
         let result = evaluation.shouldTriggerAction ? "✓ TRIGGER ACTION" : "✗ DON'T TRIGGER ACTION"
-        let resultSymbol = evaluation.shouldTriggerAction ? "✓" : "✗"
 
-        logger.debug("")
-        logger.debug("╔═══════════════════════════════════════════════════════════════")
-        logger.debug("║ POLICY EVALUATED")
-        logger.debug("╠═══════════════════════════════════════════════════════════════")
-        logger.debug("║ Policy ID: \(evaluation.policyID)")
-        logger.debug("║ Count: \(evaluation.currentCount)/\(evaluation.threshold)")
-        logger.debug("║ Result: \(result)")
-        logger.debug("║ Reason: \(evaluation.reason)")
-        logger.debug("║ Action Key: \(evaluation.actionKey)")
-        logger.debug("╚═══════════════════════════════════════════════════════════════")
+        logger.debug("""
+        ╔═══════════════════════════════════════════════════════════════
+        ║ POLICY EVALUATED
+        ╠═══════════════════════════════════════════════════════════════
+        ║ Policy ID: \(evaluation.policyID)
+        ║ Count: \(evaluation.currentCount)/\(evaluation.threshold)
+        ║ Result: \(result)
+        ║ Reason: \(evaluation.reason)
+        ║ Action Key: \(evaluation.actionKey)
+        ╚═══════════════════════════════════════════════════════════════
+        """)
 
         if evaluation.shouldTriggerAction {
-            logger.info("\(resultSymbol) Action trigger activated: \(evaluation.policyID)")
+            logger.info("✓ Action trigger activated: \(evaluation.policyID)")
         }
     }
 
     public func logPolicyReset(policyID: String) {
-        logger.debug("")
-        logger.debug("╔═══════════════════════════════════════════════════════════════")
-        logger.debug("║ POLICY RESET")
-        logger.debug("╠═══════════════════════════════════════════════════════════════")
-        logger.debug("║ Policy ID: \(policyID)")
-        logger.debug("║ Count reset to: 0")
-        logger.debug("╚═══════════════════════════════════════════════════════════════")
+        logger.debug("""
+        ╔═══════════════════════════════════════════════════════════════
+        ║ POLICY RESET
+        ╠═══════════════════════════════════════════════════════════════
+        ║ Policy ID: \(policyID)
+        ║ Count reset to: 0
+        ╚═══════════════════════════════════════════════════════════════
+        """)
     }
 
     public func logError(_ message: String, error: Error?) {
-        logger.error("╔═══════════════════════════════════════════════════════════════")
-        logger.error("║ ERROR")
-        logger.error("╠═══════════════════════════════════════════════════════════════")
-        logger.error("║ Message: \(message)")
-        if let error {
-            logger.error("║ Exception: \(error.localizedDescription)")
-        }
-        logger.error("╚═══════════════════════════════════════════════════════════════")
+        let errorLine = error.map { "║ Exception: \($0.localizedDescription)\n" } ?? ""
+
+        logger.error("""
+        ╔═══════════════════════════════════════════════════════════════
+        ║ ERROR
+        ╠═══════════════════════════════════════════════════════════════
+        ║ Message: \(message)
+        \(errorLine)╚═══════════════════════════════════════════════════════════════
+        """)
     }
 
     private func formatParameters(_ parameters: [String: AnyHashableSendable]) -> String {
