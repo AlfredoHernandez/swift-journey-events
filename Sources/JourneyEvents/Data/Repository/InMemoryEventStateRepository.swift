@@ -2,23 +2,54 @@
 //  Copyright © 2026 Jesús Alfredo Hernández Alarcón. All rights reserved.
 //
 
-/// In-memory implementation of `EventStateRepository`.
+/// In-memory implementation of ``EventStateRepository``.
 ///
-/// Stores event policy counters in memory only. All state is lost when the app restarts.
-/// Used for policies with `persistAcrossSessions = false`.
+/// Stores event policy counters and timestamps in memory only. All state is
+/// lost when the app restarts or the instance is deallocated.
 ///
-/// **Thread-safety:** Uses Swift actor isolation for safe concurrent access.
+/// ## Overview
 ///
-/// **Use case:** Temporary counters for actions that should reset on each app session,
-/// useful for:
+/// This implementation is used for policies with ``EventPolicy/persistAcrossSessions``
+/// set to `false`, providing session-only state management. It stores three types
+/// of data in memory:
+/// - Policy counters (pattern occurrence/completion counts)
+/// - Last action triggered timestamps (for cooldown tracking)
+/// - Last counted step timestamps (for multi-step deduplication)
+///
+/// ## Use Cases
+///
+/// Session-only tracking is ideal for:
 /// - Testing different action frequencies without persistent data
-/// - Time-limited campaigns
+/// - Time-limited campaigns that should reset daily
 /// - Session-based user journey tracking
+/// - Privacy-sensitive features that shouldn't persist user data
+///
+/// ## Thread Safety
+///
+/// Uses Swift actor isolation for safe concurrent access from multiple tasks.
+/// All methods can be called concurrently without additional synchronization.
+///
+/// ## Example
+///
+///     let repository = InMemoryEventStateRepository()
+///     await repository.incrementCount(policyID: "article_ad")
+///     let count = await repository.getCount(policyID: "article_ad")
+///     print(count) // Output: 1
+///
+/// - Note: All data is lost when the app restarts.
+/// - SeeAlso: ``EventStateRepository`` for protocol documentation
+/// - SeeAlso: ``UserDefaultsEventStateRepository`` for persistent storage
 public actor InMemoryEventStateRepository: EventStateRepository {
+    /// Policy counters keyed by policy ID.
     private var counts: [String: Int] = [:]
+
+    /// Last action triggered timestamps keyed by policy ID.
     private var timestamps: [String: Int64] = [:]
+
+    /// Last counted step timestamps keyed by policy ID.
     private var lastCountedStepTimestamps: [String: Int64] = [:]
 
+    /// Creates a new in-memory event state repository.
     public init() {}
 
     public func getCount(policyID: String) -> Int {

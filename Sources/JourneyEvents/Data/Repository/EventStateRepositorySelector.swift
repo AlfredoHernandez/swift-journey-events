@@ -5,33 +5,37 @@
 /// Repository selector that delegates to either persistent or in-memory storage
 /// based on the event policy's `persistAcrossSessions` configuration.
 ///
-/// **How it works:**
-/// - Event policies with `persistAcrossSessions = true` → `UserDefaultsEventStateRepository` (data persists)
-/// - Event policies with `persistAcrossSessions = false` → `InMemoryEventStateRepository` (data resets on app restart)
+/// ## How It Works
+///
+/// - Event policies with `persistAcrossSessions = true` → ``UserDefaultsEventStateRepository`` (data persists)
+/// - Event policies with `persistAcrossSessions = false` → ``InMemoryEventStateRepository`` (data resets on app restart)
 /// - Unknown event policies → Defaults to persistent storage for safety
 ///
-/// **Performance:**
-/// Uses a lazy-loaded index for O(1) event policy lookups instead of filtering on every operation.
+/// ## Performance
 ///
-/// **Thread-safety:**
-/// Both underlying repositories are thread-safe, so this selector is also thread-safe.
-public final class EventStateRepositorySelector: EventStateRepository, @unchecked Sendable {
+/// Uses an eagerly-built index for O(1) event policy lookups instead of filtering on every operation.
+///
+/// ## Thread Safety
+///
+/// This type is `Sendable` because all stored properties are immutable after initialization
+/// and the underlying repositories handle their own thread safety.
+public struct EventStateRepositorySelector: EventStateRepository, Sendable {
     private let persistentRepo: UserDefaultsEventStateRepository
     private let inMemoryRepo: InMemoryEventStateRepository
-    private let policyProvider: PolicyProvider
 
     /// Index mapping event policy ID to persistence strategy.
-    /// Built once at first access for O(1) lookup.
     ///
     /// Map structure: `policyID -> shouldPersist`
     /// - `true` = use UserDefaults
     /// - `false` = use in-memory storage
-    private lazy var policyPersistenceIndex: [String: Bool] = Dictionary(
-        uniqueKeysWithValues: policyProvider.getActivePolicies().map { policy in
-            (policy.id, policy.persistAcrossSessions)
-        },
-    )
+    private let policyPersistenceIndex: [String: Bool]
 
+    /// Creates a new repository selector.
+    ///
+    /// - Parameters:
+    ///   - persistentRepo: Repository for persistent storage (UserDefaults)
+    ///   - inMemoryRepo: Repository for in-memory storage
+    ///   - policyProvider: Provider for active event policies
     public init(
         persistentRepo: UserDefaultsEventStateRepository,
         inMemoryRepo: InMemoryEventStateRepository,
@@ -39,7 +43,13 @@ public final class EventStateRepositorySelector: EventStateRepository, @unchecke
     ) {
         self.persistentRepo = persistentRepo
         self.inMemoryRepo = inMemoryRepo
-        self.policyProvider = policyProvider
+
+        // Build index eagerly for thread safety and Sendable conformance
+        policyPersistenceIndex = Dictionary(
+            uniqueKeysWithValues: policyProvider.getActivePolicies().map { policy in
+                (policy.id, policy.persistAcrossSessions)
+            },
+        )
     }
 
     /// Selects the appropriate repository for a given event policy.

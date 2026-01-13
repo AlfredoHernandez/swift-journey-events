@@ -4,29 +4,95 @@
 
 /// Matches journey step sequences against expected patterns.
 ///
-/// Supports two matching modes:
-/// - **Strict**: Steps must occur in exact order without intermediates
-/// - **Loose**: Steps must occur in order but can have intermediate steps
+/// Provides algorithms for validating whether a sequence of user steps matches
+/// an expected pattern. Used by ``TrackJourneyStep`` to validate multi-step
+/// journey patterns before incrementing policy counters.
 ///
-/// ## Examples
+/// ## Overview
+///
+/// ``SequenceMatcher`` supports two matching modes to handle different use cases:
+///
+/// **Strict mode**: Steps must occur in exact consecutive order without any
+/// intermediate steps. Use this for strict user flows where every step matters.
+///
+/// **Loose mode**: Steps must occur in the correct order but can have other
+/// steps between them. Use this for flexible user flows where intermediate
+/// actions are acceptable.
+///
+/// ## Matching Modes
 ///
 /// ### Strict Matching
-/// ```
-/// Expected: [A, B, C]
-/// Recent:   [A, B, C]     → Match ✅
-/// Recent:   [A, X, B, C]  → No Match ❌ (has intermediate step X)
-/// Recent:   [A, B]        → No Match ❌ (incomplete)
-/// ```
+///
+/// The last N steps must match the expected sequence exactly:
+///
+///     Expected: [A, B, C]
+///     Recent:   [A, B, C]     → Match ✅
+///     Recent:   [A, X, B, C]  → No Match ❌ (has intermediate step X)
+///     Recent:   [A, B]        → No Match ❌ (incomplete)
 ///
 /// ### Loose Matching
-/// ```
-/// Expected: [A, B, C]
-/// Recent:   [A, B, C]     → Match ✅
-/// Recent:   [A, X, B, C]  → Match ✅ (X is allowed intermediate)
-/// Recent:   [X, A, Y, B, Z, C] → Match ✅
-/// Recent:   [A, C, B]     → No Match ❌ (wrong order)
-/// ```
+///
+/// Expected steps must appear in order but can have intermediates:
+///
+///     Expected: [A, B, C]
+///     Recent:   [A, B, C]     → Match ✅
+///     Recent:   [A, X, B, C]  → Match ✅ (X is allowed intermediate)
+///     Recent:   [X, A, Y, B, Z, C] → Match ✅
+///     Recent:   [A, C, B]     → No Match ❌ (wrong order)
+///
+/// ## Usage
+///
+/// Create a matcher:
+///
+///     let matcher = SequenceMatcher()
+///
+/// Check strict sequence:
+///
+///     let steps = [
+///         JourneyStep(name: "welcome"),
+///         JourneyStep(name: "profile"),
+///         JourneyStep(name: "home")
+///     ]
+///     let matches = matcher.matchesStrictSequence(
+///         recentSteps: steps,
+///         expectedSequence: ["welcome", "profile", "home"]
+///     )
+///     print(matches) // true
+///
+/// Check loose sequence:
+///
+///     let steps = [
+///         JourneyStep(name: "search"),
+///         JourneyStep(name: "filter"),  // Intermediate step
+///         JourneyStep(name: "results"),
+///         JourneyStep(name: "detail")
+///     ]
+///     let matches = matcher.matchesLooseSequence(
+///         recentSteps: steps,
+///         expectedSequence: ["search", "results", "detail"]
+///     )
+///     print(matches) // true
+///
+/// Use convenience method with pattern:
+///
+///     let pattern = JourneyPattern(steps: ["A", "B", "C"], strictSequence: false)
+///     let matches = matcher.matches(
+///         recentSteps: steps,
+///         expectedSequence: pattern.steps,
+///         strict: pattern.strictSequence
+///     )
+///
+/// ## Performance
+///
+/// - **Strict matching**: O(n) where n is the expected sequence length
+/// - **Loose matching**: O(m) where m is the number of recent steps
+///
+/// Both algorithms are efficient and suitable for real-time validation.
+///
+/// - SeeAlso: ``JourneyPattern`` for pattern configuration
+/// - SeeAlso: ``TrackJourneyStep`` for usage in step tracking
 public struct SequenceMatcher: Sendable {
+    /// Creates a new sequence matcher.
     public init() {}
 
     /// Checks if recent steps match the expected sequence in strict mode.

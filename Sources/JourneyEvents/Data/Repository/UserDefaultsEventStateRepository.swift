@@ -4,15 +4,26 @@
 
 import Foundation
 
-/// Implementation of `EventStateRepository` using UserDefaults.
+/// Implementation of ``EventStateRepository`` using UserDefaults.
 ///
 /// Persists event policy state across app sessions.
 /// All counters and timestamps are stored locally.
 ///
-/// **When used:**
-/// This implementation is selected by `EventStateRepositorySelector` for policies
+/// ## When Used
+///
+/// This implementation is selected by ``EventStateRepositorySelector`` for policies
 /// with `persistAcrossSessions = true`. Counters survive app restarts.
-public final class UserDefaultsEventStateRepository: EventStateRepository, @unchecked Sendable {
+///
+/// ## Thread Safety
+///
+/// This type uses `@unchecked Sendable` because:
+/// - `UserDefaults` is documented as thread-safe by Apple
+/// - The stored `UserDefaults` reference is immutable (`let`)
+/// - All UserDefaults operations are atomic
+///
+/// - Note: `UserDefaults` doesn't conform to `Sendable` in the Swift standard library,
+///   but its thread-safe design makes this usage safe.
+public struct UserDefaultsEventStateRepository: EventStateRepository, @unchecked Sendable {
     private static let prefsName = "journey_events_state"
     private static let keyPrefixCount = "event_state_count_"
     private static let keyPrefixTimestamp = "event_state_timestamp_"
@@ -20,6 +31,10 @@ public final class UserDefaultsEventStateRepository: EventStateRepository, @unch
 
     private let userDefaults: UserDefaults
 
+    /// Creates a new UserDefaults-backed event state repository.
+    ///
+    /// - Parameter userDefaults: Custom UserDefaults instance. If `nil`, creates a suite
+    ///   with the name "journey_events_state" or falls back to `.standard`.
     public init(userDefaults: UserDefaults? = nil) {
         self.userDefaults = userDefaults ?? UserDefaults(suiteName: Self.prefsName) ?? .standard
     }
@@ -42,8 +57,7 @@ public final class UserDefaultsEventStateRepository: EventStateRepository, @unch
     }
 
     public func getLastActionTriggeredTimestamp(policyID: String) async -> Int64? {
-        let timestamp = userDefaults.object(forKey: timestampKey(for: policyID)) as? Int64
-        return timestamp
+        userDefaults.object(forKey: timestampKey(for: policyID)) as? Int64
     }
 
     public func setLastCountedStepTimestamp(policyID: String, timestamp: Int64) async {
@@ -51,8 +65,7 @@ public final class UserDefaultsEventStateRepository: EventStateRepository, @unch
     }
 
     public func getLastCountedStepTimestamp(policyID: String) async -> Int64? {
-        let timestamp = userDefaults.object(forKey: lastCountedStepKey(for: policyID)) as? Int64
-        return timestamp
+        userDefaults.object(forKey: lastCountedStepKey(for: policyID)) as? Int64
     }
 
     // MARK: - Private Helpers

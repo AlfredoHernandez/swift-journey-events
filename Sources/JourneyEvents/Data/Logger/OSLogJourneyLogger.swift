@@ -5,14 +5,60 @@
 import Foundation
 import OSLog
 
-/// Verbose implementation of `JourneyLogger` using OS Logger.
+/// Verbose implementation of ``JourneyLogger`` using OS Logger.
 ///
-/// Provides detailed and visual logging of all journey events
-/// and policy evaluation results. Suitable for debugging.
+/// Provides detailed, visual logging of all journey events and policy evaluation
+/// results with box-drawing characters and formatted output. Ideal for debugging
+/// and development but not recommended for production due to verbosity.
+///
+/// ## Overview
+///
+/// ``OSLogJourneyLogger`` creates highly readable, visually formatted log entries
+/// using box-drawing characters. Each event is logged in a bordered box with
+/// clearly labeled fields.
+///
+/// ## Log Format
+///
+/// Step recorded:
+///
+///     ╔═══════════════════════════════════════════════════════════════
+///     ║ JOURNEY STEP RECORDED
+///     ╠═══════════════════════════════════════════════════════════════
+///     ║ Step: line_viewed
+///     ║ Parameters: {id=linea_1, name=Line 1}
+///     ║ Timestamp: 2026-01-13 10:30:45.123
+///     ╚═══════════════════════════════════════════════════════════════
+///
+/// Policy evaluation:
+///
+///     ╔═══════════════════════════════════════════════════════════════
+///     ║ POLICY EVALUATED
+///     ╠═══════════════════════════════════════════════════════════════
+///     ║ Policy ID: article_ad
+///     ║ Count: 5/5
+///     ║ Result: ✓ TRIGGER ACTION
+///     ║ Reason: Threshold reached (5/5)
+///     ║ Action Key: ca-app-pub-xxx/yyy
+///     ╚═══════════════════════════════════════════════════════════════
+///
+/// ## Usage
+///
+///     let logger = OSLogJourneyLogger()
+///     logger.logStepRecorded(JourneyStep(name: "article_viewed"))
+///
+/// ## Performance
+///
+/// This logger is significantly more verbose than ``CompactJourneyLogger``
+/// (about 7x more lines per event). Use for debugging only, not production.
+///
+/// - Warning: High verbosity makes logs harder to scan. Consider ``CompactJourneyLogger`` for production.
+/// - SeeAlso: ``JourneyLogger`` for protocol documentation
+/// - SeeAlso: ``CompactJourneyLogger`` for production-friendly logging
 public struct OSLogJourneyLogger: JourneyLogger {
     private let logger = Logger(subsystem: "JourneyEvents", category: "Journey")
     private let dateFormatter: DateFormatter
 
+    /// Creates a new verbose OS log journey logger.
     public init() {
         dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
