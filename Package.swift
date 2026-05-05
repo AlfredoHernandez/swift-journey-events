@@ -12,9 +12,14 @@ let package = Package(
 	],
 	products: [
 		.library(name: "JourneyEvents", targets: ["JourneyEvents"]),
+		.library(name: "JourneyEventsTesting", targets: ["JourneyEventsTesting"]),
 	],
 	targets: [
 		.target(name: "JourneyEvents"),
-		.testTarget(name: "JourneyEventsTests", dependencies: ["JourneyEvents"]),
+		.target(name: "JourneyEventsTesting", dependencies: ["JourneyEvents"]),
+		.testTarget(
+			name: "JourneyEventsTests",
+			dependencies: ["JourneyEvents", "JourneyEventsTesting"],
+		),
 	],
 )
