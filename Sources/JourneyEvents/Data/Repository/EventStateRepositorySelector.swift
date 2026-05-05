@@ -2,14 +2,22 @@
 //  Copyright © 2026 Jesús Alfredo Hernández Alarcón. All rights reserved.
 //
 
-/// Repository selector that delegates to either persistent or in-memory storage
+/// Repository selector that delegates to either persistent or session-only storage
 /// based on the event policy's `persistAcrossSessions` configuration.
 ///
 /// ## How It Works
 ///
-/// - Event policies with `persistAcrossSessions = true` → ``UserDefaultsEventStateRepository`` (data persists)
-/// - Event policies with `persistAcrossSessions = false` → ``InMemoryEventStateRepository`` (data resets on app restart)
+/// - Event policies with `persistAcrossSessions = true` → persistent repository (data persists)
+/// - Event policies with `persistAcrossSessions = false` → session-only repository (data resets on app restart)
 /// - Unknown event policies → Defaults to persistent storage for safety
+///
+/// ## Composition
+///
+/// The persistent side defaults to ``UserDefaultsEventStateRepository``; the session-only
+/// side defaults to ``SessionEventStateRepository``. Both are `Sendable` actors, no
+/// `@unchecked` escape hatches involved. The defaults can be overridden when a different
+/// backing store is required (for example, a test double or an alternative persistence
+/// layer).
 ///
 /// ## Performance
 ///
@@ -20,77 +28,86 @@
 /// This type is `Sendable` because all stored properties are immutable after initialization
 /// and the underlying repositories handle their own thread safety.
 public struct EventStateRepositorySelector: EventStateRepository, Sendable {
-    private let persistentRepo: UserDefaultsEventStateRepository
-    private let inMemoryRepo: InMemoryEventStateRepository
+	/// The backing repository for persistent policies (default: ``UserDefaultsEventStateRepository``).
+	///
+	/// Override when you need a different persistence layer (e.g., a test double).
+	private let persistentRepo: UserDefaultsEventStateRepository
 
-    /// Index mapping event policy ID to persistence strategy.
-    ///
-    /// Map structure: `policyID -> shouldPersist`
-    /// - `true` = use UserDefaults
-    /// - `false` = use in-memory storage
-    private let policyPersistenceIndex: [String: Bool]
+	/// The backing repository for session-only policies (default: ``SessionEventStateRepository``).
+	///
+	/// Override when you need a different in-memory store (e.g., a test double).
+	private let sessionRepo: SessionEventStateRepository
 
-    /// Creates a new repository selector.
-    ///
-    /// - Parameters:
-    ///   - persistentRepo: Repository for persistent storage (UserDefaults)
-    ///   - inMemoryRepo: Repository for in-memory storage
-    ///   - policyProvider: Provider for active event policies
-    public init(
-        persistentRepo: UserDefaultsEventStateRepository,
-        inMemoryRepo: InMemoryEventStateRepository,
-        policyProvider: PolicyProvider,
-    ) {
-        self.persistentRepo = persistentRepo
-        self.inMemoryRepo = inMemoryRepo
+	/// Index mapping event policy ID to persistence strategy.
+	///
+	/// Map structure: `policyID -> shouldPersist`
+	/// - `true` = use the persistent repository
+	/// - `false` = use the session-only repository
+	private let policyPersistenceIndex: [String: Bool]
 
-        // Build index eagerly for thread safety and Sendable conformance
-        policyPersistenceIndex = Dictionary(
-            uniqueKeysWithValues: policyProvider.getActivePolicies().map { policy in
-                (policy.id, policy.persistAcrossSessions)
-            },
-        )
-    }
+	/// Creates a new repository selector.
+	///
+	/// - Parameters:
+	///   - persistentRepo: Repository for persistent storage. Defaults to
+	///     ``UserDefaultsEventStateRepository``.
+	///   - sessionRepo: Repository for session-only storage. Defaults to
+	///     ``SessionEventStateRepository``.
+	///   - policyProvider: Provider for active event policies.
+	public init(
+		persistentRepo: UserDefaultsEventStateRepository = UserDefaultsEventStateRepository(),
+		sessionRepo: SessionEventStateRepository = SessionEventStateRepository(),
+		policyProvider: PolicyProvider,
+	) {
+		self.persistentRepo = persistentRepo
+		self.sessionRepo = sessionRepo
 
-    /// Selects the appropriate repository for a given event policy.
-    ///
-    /// - Parameter policyID: The event policy identifier
-    /// - Returns: `persistentRepo` if event policy has `persistAcrossSessions=true` or is unknown,
-    ///            `inMemoryRepo` if event policy has `persistAcrossSessions=false`
-    private func getRepositoryForPolicy(policyID: String) -> EventStateRepository {
-        let shouldPersist = policyPersistenceIndex[policyID] ?? true // default to persistent
-        return shouldPersist ? persistentRepo : inMemoryRepo
-    }
+		// Build index eagerly for thread safety and Sendable conformance
+		policyPersistenceIndex = Dictionary(
+			uniqueKeysWithValues: policyProvider.getActivePolicies().map { policy in
+				(policy.id, policy.persistAcrossSessions)
+			},
+		)
+	}
 
-    public func getCount(policyID: String) async -> Int {
-        await getRepositoryForPolicy(policyID: policyID).getCount(policyID: policyID)
-    }
+	/// Selects the appropriate repository for a given event policy.
+	///
+	/// - Parameter policyID: The event policy identifier
+	/// - Returns: `persistentRepo` if event policy has `persistAcrossSessions=true` or is unknown,
+	///            `sessionRepo` if event policy has `persistAcrossSessions=false`
+	private func getRepositoryForPolicy(policyID: String) -> any EventStateRepository {
+		let shouldPersist = policyPersistenceIndex[policyID] ?? true // default to persistent
+		return shouldPersist ? persistentRepo : sessionRepo
+	}
 
-    public func incrementCount(policyID: String) async {
-        await getRepositoryForPolicy(policyID: policyID).incrementCount(policyID: policyID)
-    }
+	public func getCount(policyID: String) async -> Int {
+		await getRepositoryForPolicy(policyID: policyID).getCount(policyID: policyID)
+	}
 
-    public func resetCount(policyID: String) async {
-        await getRepositoryForPolicy(policyID: policyID).resetCount(policyID: policyID)
-    }
+	public func incrementCount(policyID: String) async {
+		await getRepositoryForPolicy(policyID: policyID).incrementCount(policyID: policyID)
+	}
 
-    public func setLastActionTriggeredTimestamp(policyID: String, timestamp: Int64) async {
-        await getRepositoryForPolicy(policyID: policyID)
-            .setLastActionTriggeredTimestamp(policyID: policyID, timestamp: timestamp)
-    }
+	public func resetCount(policyID: String) async {
+		await getRepositoryForPolicy(policyID: policyID).resetCount(policyID: policyID)
+	}
 
-    public func getLastActionTriggeredTimestamp(policyID: String) async -> Int64? {
-        await getRepositoryForPolicy(policyID: policyID)
-            .getLastActionTriggeredTimestamp(policyID: policyID)
-    }
+	public func setLastActionTriggeredTimestamp(policyID: String, timestamp: Int64) async {
+		await getRepositoryForPolicy(policyID: policyID)
+			.setLastActionTriggeredTimestamp(policyID: policyID, timestamp: timestamp)
+	}
 
-    public func setLastCountedStepTimestamp(policyID: String, timestamp: Int64) async {
-        await getRepositoryForPolicy(policyID: policyID)
-            .setLastCountedStepTimestamp(policyID: policyID, timestamp: timestamp)
-    }
+	public func getLastActionTriggeredTimestamp(policyID: String) async -> Int64? {
+		await getRepositoryForPolicy(policyID: policyID)
+			.getLastActionTriggeredTimestamp(policyID: policyID)
+	}
 
-    public func getLastCountedStepTimestamp(policyID: String) async -> Int64? {
-        await getRepositoryForPolicy(policyID: policyID)
-            .getLastCountedStepTimestamp(policyID: policyID)
-    }
+	public func setLastCountedStepTimestamp(policyID: String, timestamp: Int64) async {
+		await getRepositoryForPolicy(policyID: policyID)
+			.setLastCountedStepTimestamp(policyID: policyID, timestamp: timestamp)
+	}
+
+	public func getLastCountedStepTimestamp(policyID: String) async -> Int64? {
+		await getRepositoryForPolicy(policyID: policyID)
+			.getLastCountedStepTimestamp(policyID: policyID)
+	}
 }
