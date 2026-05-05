@@ -67,4 +67,23 @@ struct SessionJourneyStepRepositoryTests {
 		#expect(await repository.getStepCount(stepName: "step") == writes)
 		#expect(await repository.getStepHistory().count == writes)
 	}
+
+	@Test
+	func `getRecentSteps returns empty array for negative limit instead of trapping`() async {
+		// Without the guard, `suffix(_:)` triggers a stdlib precondition crash for any
+		// negative `maxLength`. Guarding upstream keeps the public API total.
+		let repository = SessionJourneyStepRepository()
+		await repository.recordStep(JourneyStep(name: "any", timestamp: 1))
+
+		#expect(await repository.getRecentSteps(limit: -1) == [])
+		#expect(await repository.getRecentSteps(limit: -100) == [])
+	}
+
+	@Test
+	func `getRecentSteps returns empty array for zero limit`() async {
+		let repository = SessionJourneyStepRepository()
+		await repository.recordStep(JourneyStep(name: "any", timestamp: 1))
+
+		#expect(await repository.getRecentSteps(limit: 0) == [])
+	}
 }

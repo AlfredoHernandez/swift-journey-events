@@ -125,4 +125,15 @@ struct InMemoryJourneyStepRepositoryTests {
 		#expect(recent.isEmpty)
 		#expect(count == 0)
 	}
+
+	@Test
+	func `getRecentSteps returns empty array for negative limit instead of trapping`() async {
+		// Without the guard, `suffix(_:)` triggers a stdlib precondition crash for any
+		// negative `maxLength`. Guarding upstream keeps the public API total.
+		let repository = InMemoryJourneyStepRepository()
+		await repository.recordStep(JourneyStep(name: "any", timestamp: 1))
+
+		#expect(await repository.getRecentSteps(limit: -1) == [])
+		#expect(await repository.getRecentSteps(limit: -100) == [])
+	}
 }

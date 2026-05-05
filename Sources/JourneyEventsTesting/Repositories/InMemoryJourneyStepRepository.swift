@@ -65,10 +65,13 @@ public actor InMemoryJourneyStepRepository: JourneyStepRepository {
 	}
 
 	public func getRecentSteps(limit: Int) -> [JourneyStep] {
+		// Guard the negative case before falling through to `suffix(_:)`, which traps
+		// on negative `maxLength` (`_precondition(maxLength >= 0)` in stdlib).
+		guard limit > 0 else { return [] }
 		if stepHistory.count <= limit {
-			stepHistory
+			return stepHistory
 		} else {
-			Array(stepHistory.suffix(limit))
+			return Array(stepHistory.suffix(limit))
 		}
 	}
 
