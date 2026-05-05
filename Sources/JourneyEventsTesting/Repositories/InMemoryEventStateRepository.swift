@@ -2,6 +2,8 @@
 //  Copyright © 2026 Jesús Alfredo Hernández Alarcón. All rights reserved.
 //
 
+import JourneyEvents
+
 /// In-memory implementation of ``EventStateRepository``.
 ///
 /// Stores event policy counters and timestamps in memory only. All state is
@@ -40,43 +42,38 @@
 /// - SeeAlso: ``EventStateRepository`` for protocol documentation
 /// - SeeAlso: ``UserDefaultsEventStateRepository`` for persistent storage
 public actor InMemoryEventStateRepository: EventStateRepository {
-    /// Policy counters keyed by policy ID.
-    private var counts: [String: Int] = [:]
+	private var counts: [String: Int] = [:]
+	private var timestamps: [String: Int64] = [:]
+	private var lastCountedStepTimestamps: [String: Int64] = [:]
 
-    /// Last action triggered timestamps keyed by policy ID.
-    private var timestamps: [String: Int64] = [:]
+	/// Creates a new in-memory event state repository.
+	public init() {}
 
-    /// Last counted step timestamps keyed by policy ID.
-    private var lastCountedStepTimestamps: [String: Int64] = [:]
+	public func getCount(policyID: String) -> Int {
+		counts[policyID] ?? 0
+	}
 
-    /// Creates a new in-memory event state repository.
-    public init() {}
+	public func incrementCount(policyID: String) {
+		counts[policyID, default: 0] += 1
+	}
 
-    public func getCount(policyID: String) -> Int {
-        counts[policyID] ?? 0
-    }
+	public func resetCount(policyID: String) {
+		counts[policyID] = 0
+	}
 
-    public func incrementCount(policyID: String) {
-        counts[policyID, default: 0] += 1
-    }
+	public func setLastActionTriggeredTimestamp(policyID: String, timestamp: Int64) {
+		timestamps[policyID] = timestamp
+	}
 
-    public func resetCount(policyID: String) {
-        counts[policyID] = 0
-    }
+	public func getLastActionTriggeredTimestamp(policyID: String) -> Int64? {
+		timestamps[policyID]
+	}
 
-    public func setLastActionTriggeredTimestamp(policyID: String, timestamp: Int64) {
-        timestamps[policyID] = timestamp
-    }
+	public func setLastCountedStepTimestamp(policyID: String, timestamp: Int64) {
+		lastCountedStepTimestamps[policyID] = timestamp
+	}
 
-    public func getLastActionTriggeredTimestamp(policyID: String) -> Int64? {
-        timestamps[policyID]
-    }
-
-    public func setLastCountedStepTimestamp(policyID: String, timestamp: Int64) {
-        lastCountedStepTimestamps[policyID] = timestamp
-    }
-
-    public func getLastCountedStepTimestamp(policyID: String) -> Int64? {
-        lastCountedStepTimestamps[policyID]
-    }
+	public func getLastCountedStepTimestamp(policyID: String) -> Int64? {
+		lastCountedStepTimestamps[policyID]
+	}
 }

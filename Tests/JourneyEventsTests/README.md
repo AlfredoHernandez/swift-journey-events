@@ -111,6 +111,12 @@ Tests for policy evaluation logic:
 
 ### Data Layer - Repositories
 
+> The `InMemoryJourneyStepRepository` and `InMemoryEventStateRepository` types
+> ship from the **`JourneyEventsTesting`** library product (not the main
+> `JourneyEvents` target). These tests are written against the relocated
+> versions; consumers writing their own tests should likewise import
+> `JourneyEventsTesting`.
+
 #### InMemoryJourneyStepRepository Tests
 Tests for in-memory step storage:
 - Step recording and counting
@@ -161,7 +167,7 @@ Tests for the main API entry point:
 ### Mock Implementations
 - **MockTimeProvider**: Controllable time for cooldown testing
 - **MockPolicyProvider**: Configurable policy provider
-- **MockLogger**: Logger that captures all events
+- **RecordingJourneyLogger** (lives in `JourneyEventsTesting`): captures step records, policy evaluations, resets, and errors for assertions
 - **TestFactory**: Helper methods for creating test objects
 
 ## Running Tests
@@ -203,7 +209,7 @@ All tests follow the AAA pattern:
 ```swift
 @Test("Description of what is tested")
 func testName() async {
-    // Arrange: Set up test dependencies
+    // Arrange: Set up test dependencies (in-memory repos live in `JourneyEventsTesting`)
     let repository = InMemoryEventStateRepository()
 
     // Act: Perform the action

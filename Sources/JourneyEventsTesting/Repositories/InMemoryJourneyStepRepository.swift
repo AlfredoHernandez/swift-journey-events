@@ -2,6 +2,8 @@
 //  Copyright © 2026 Jesús Alfredo Hernández Alarcón. All rights reserved.
 //
 
+import JourneyEvents
+
 /// In-memory implementation of ``JourneyStepRepository``.
 ///
 /// Stores journey step history in memory during the current app session.
@@ -43,41 +45,39 @@
 /// - SeeAlso: ``JourneyStepRepository`` for protocol documentation
 /// - SeeAlso: ``JourneyStep`` for step structure
 public actor InMemoryJourneyStepRepository: JourneyStepRepository {
-    /// Chronologically ordered history of all recorded steps.
-    private var stepHistory: [JourneyStep] = []
+	private var stepHistory: [JourneyStep] = []
+	private var stepCounts: [String: Int] = [:]
 
-    /// Counter map tracking occurrences of each step name.
-    private var stepCounts: [String: Int] = [:]
+	/// Creates a new in-memory journey step repository.
+	public init() {}
 
-    /// Creates a new in-memory journey step repository.
-    public init() {}
+	public func recordStep(_ step: JourneyStep) {
+		stepHistory.append(step)
+		stepCounts[step.name, default: 0] += 1
+	}
 
-    public func recordStep(_ step: JourneyStep) {
-        // Add to history
-        stepHistory.append(step)
+	public func getStepCount(stepName: String) -> Int {
+		stepCounts[stepName] ?? 0
+	}
 
-        // Increment counter
-        stepCounts[step.name, default: 0] += 1
-    }
+	public func getStepHistory() -> [JourneyStep] {
+		stepHistory
+	}
 
-    public func getStepCount(stepName: String) -> Int {
-        stepCounts[stepName] ?? 0
-    }
+	public func getRecentSteps(limit: Int) -> [JourneyStep] {
+		// Guard the negative case before falling through to `suffix(_:)`, which traps
+		// on negative `maxLength` (`_precondition(maxLength >= 0)` in stdlib).
+		guard limit > 0 else { return [] }
+		if stepHistory.count <= limit {
+			return stepHistory
+		} else {
+			return Array(stepHistory.suffix(limit))
+		}
+	}
 
-    public func getStepHistory() -> [JourneyStep] {
-        stepHistory
-    }
-
-    public func getRecentSteps(limit: Int) -> [JourneyStep] {
-        if stepHistory.count <= limit {
-            stepHistory
-        } else {
-            Array(stepHistory.suffix(limit))
-        }
-    }
-
-    public func clearHistory() {
-        stepHistory.removeAll()
-        // Note: We don't clear stepCounts because they're used for persistent policies
-    }
+	public func clearHistory() {
+		stepHistory.removeAll()
+		// Counts intentionally retained: they back persistent-style policies that read
+		// step counts independently of history length.
+	}
 }
