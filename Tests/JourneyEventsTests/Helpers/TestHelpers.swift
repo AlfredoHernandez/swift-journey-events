@@ -5,66 +5,47 @@
 @testable import JourneyEvents
 import Foundation
 import JourneyEventsTesting
+import os
 
 // MARK: - Mock Time Provider
 
-final class MockTimeProvider: TimeProvider, @unchecked Sendable {
-	private var _currentTime: Int64 = 0
-	private let lock = NSLock()
+/// Mutable `TimeProvider` for tests. Storage is guarded by `OSAllocatedUnfairLock`
+/// so the type is `Sendable` without an `@unchecked` escape hatch.
+final class MockTimeProvider: TimeProvider {
+	private let storage = OSAllocatedUnfairLock<Int64>(initialState: 0)
 
 	var currentTime: Int64 {
-		get {
-			lock.lock()
-			defer { lock.unlock() }
-			return _currentTime
-		}
-		set {
-			lock.lock()
-			defer { lock.unlock() }
-			_currentTime = newValue
-		}
+		get { storage.withLock { $0 } }
+		set { storage.withLock { $0 = newValue } }
 	}
 
 	func currentTimeMillis() -> Int64 {
-		lock.lock()
-		defer { lock.unlock() }
-		return _currentTime
+		storage.withLock { $0 }
 	}
 
 	func advance(by milliseconds: Int64) {
-		lock.lock()
-		defer { lock.unlock() }
-		_currentTime += milliseconds
+		storage.withLock { $0 += milliseconds }
 	}
 }
 
 // MARK: - Mock Policy Provider
 
-final class MockPolicyProvider: PolicyProvider, @unchecked Sendable {
-	private var _policies: [EventPolicy] = []
-	private let lock = NSLock()
-
-	var policies: [EventPolicy] {
-		get {
-			lock.lock()
-			defer { lock.unlock() }
-			return _policies
-		}
-		set {
-			lock.lock()
-			defer { lock.unlock() }
-			_policies = newValue
-		}
-	}
+/// Mutable `PolicyProvider` for tests. Storage is guarded by `OSAllocatedUnfairLock`
+/// so the type is `Sendable` without an `@unchecked` escape hatch.
+final class MockPolicyProvider: PolicyProvider {
+	private let storage: OSAllocatedUnfairLock<[EventPolicy]>
 
 	init(policies: [EventPolicy] = []) {
-		_policies = policies
+		storage = OSAllocatedUnfairLock(initialState: policies)
+	}
+
+	var policies: [EventPolicy] {
+		get { storage.withLock { $0 } }
+		set { storage.withLock { $0 = newValue } }
 	}
 
 	func getActivePolicies() -> [EventPolicy] {
-		lock.lock()
-		defer { lock.unlock() }
-		return _policies
+		storage.withLock { $0 }
 	}
 }
 
