@@ -20,6 +20,7 @@ let package = Package(
 		.testTarget(
 			name: "JourneyEventsTests",
 			dependencies: ["JourneyEvents", "JourneyEventsTesting"],
+			exclude: ["README.md"],
 		),
 	],
 )
