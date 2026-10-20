@@ -27,6 +27,10 @@
 ///     Threshold reached? → Yes → Reset counter, record timestamp, return true
 ///                        → No  → Return false with remaining count
 ///
+/// A policy with ``PolicyCommitMode/deferred`` skips the reset on a reached
+/// threshold: it returns `true` and keeps doing so on every evaluation until
+/// ``commit(_:)`` spends the cycle.
+///
 /// ## Usage
 ///
 /// Create the use case with required dependencies:
@@ -56,187 +60,201 @@
 /// This use case is thread-safe and can be called concurrently. State updates
 /// are atomic and handled by the underlying ``EventStateRepository``.
 ///
-/// - Note: Automatically resets counters and records timestamps when actions trigger.
+/// - Note: Automatically resets counters and records timestamps when actions trigger,
+///   unless the policy defers that to ``commit(_:)``.
 /// - SeeAlso: ``PolicyEvaluation`` for evaluation results
 /// - SeeAlso: ``EventPolicy`` for policy configuration
 /// - SeeAlso: ``TimeProvider`` for cooldown time calculations
 public final class EvaluateEventPolicy: Sendable {
-    private static let millisPerSecond: Int64 = 1000
-    private static let millisPerMinute: Int64 = 60000
+	private static let millisPerSecond: Int64 = 1000
+	private static let millisPerMinute: Int64 = 60000
 
-    private let eventStateRepository: EventStateRepository
-    private let logger: JourneyLogger
-    private let timeProvider: TimeProvider
+	private let eventStateRepository: EventStateRepository
+	private let logger: JourneyLogger
+	private let timeProvider: TimeProvider
 
-    /// Creates a new policy evaluator.
-    ///
-    /// - Parameters:
-    ///   - eventStateRepository: Repository for accessing policy state and counters
-    ///   - logger: Logger for recording evaluation results
-    ///   - timeProvider: Provider for current time (used in cooldown calculations)
-    public init(
-        eventStateRepository: EventStateRepository,
-        logger: JourneyLogger,
-        timeProvider: TimeProvider,
-    ) {
-        self.eventStateRepository = eventStateRepository
-        self.logger = logger
-        self.timeProvider = timeProvider
-    }
+	/// Creates a new policy evaluator.
+	///
+	/// - Parameters:
+	///   - eventStateRepository: Repository for accessing policy state and counters
+	///   - logger: Logger for recording evaluation results
+	///   - timeProvider: Provider for current time (used in cooldown calculations)
+	public init(
+		eventStateRepository: EventStateRepository,
+		logger: JourneyLogger,
+		timeProvider: TimeProvider,
+	) {
+		self.eventStateRepository = eventStateRepository
+		self.logger = logger
+		self.timeProvider = timeProvider
+	}
 
-    /// Evaluates an event policy against current journey state.
-    ///
-    /// This method performs the complete evaluation workflow including cooldown
-    /// checking, threshold validation, and state updates. Results are logged
-    /// using the configured ``JourneyLogger``.
-    ///
-    /// If the action should trigger (threshold reached and cooldown expired),
-    /// this method automatically:
-    /// - Resets the policy counter to 0
-    /// - Records the current timestamp for cooldown tracking
-    /// - Logs the policy reset event
-    ///
-    /// - Parameter policy: The policy to evaluate
-    /// - Returns: A ``PolicyEvaluation`` containing the decision and context
-    ///
-    /// - Complexity: O(1) - Constant time lookups and updates
-    public func callAsFunction(_ policy: EventPolicy) async -> PolicyEvaluation {
-        // Step 1: Check cooldown (if enabled)
-        if policy.cooldownMinutes > 0 {
-            if let cooldownEvaluation = await evaluateCooldownState(policy: policy) {
-                return cooldownEvaluation
-            }
-        }
+	/// Evaluates an event policy against current journey state.
+	///
+	/// This method performs the complete evaluation workflow including cooldown
+	/// checking, threshold validation, and state updates. Results are logged
+	/// using the configured ``JourneyLogger``.
+	///
+	/// If the action should trigger (threshold reached and cooldown expired)
+	/// and the policy's ``EventPolicy/commitMode`` is ``PolicyCommitMode/onTrigger``,
+	/// this method automatically:
+	/// - Resets the policy counter to 0
+	/// - Records the current timestamp for cooldown tracking
+	/// - Logs the policy reset event
+	///
+	/// - Parameter policy: The policy to evaluate
+	/// - Returns: A ``PolicyEvaluation`` containing the decision and context
+	///
+	/// - Complexity: O(1) - Constant time lookups and updates
+	public func callAsFunction(_ policy: EventPolicy) async -> PolicyEvaluation {
+		// Step 1: Check cooldown (if enabled)
+		if policy.cooldownMinutes > 0 {
+			if let cooldownEvaluation = await evaluateCooldownState(policy: policy) {
+				return cooldownEvaluation
+			}
+		}
 
-        // Step 2: Check threshold (existing logic)
-        let currentCount = await getCurrentCount(policy: policy)
-        let thresholdReached = currentCount >= policy.threshold
+		// Step 2: Check threshold (existing logic)
+		let currentCount = await getCurrentCount(policy: policy)
+		let thresholdReached = currentCount >= policy.threshold
 
-        // Step 3: Handle result
-        if thresholdReached {
-            await resetCounterAndSaveTimestamp(policy: policy)
-            logger.logPolicyReset(policyID: policy.id)
-        }
+		// Step 3: Handle result
+		if thresholdReached, policy.commitMode == .onTrigger {
+			await commit(policy)
+		}
 
-        let reason = buildEvaluationReason(
-            thresholdReached: thresholdReached,
-            currentCount: currentCount,
-            threshold: policy.threshold,
-        )
+		let reason = buildEvaluationReason(
+			thresholdReached: thresholdReached,
+			currentCount: currentCount,
+			threshold: policy.threshold,
+		)
 
-        return PolicyEvaluation(
-            shouldTriggerAction: thresholdReached,
-            policyID: policy.id,
-            actionKey: policy.actionKey,
-            currentCount: currentCount,
-            threshold: policy.threshold,
-            reason: reason,
-        )
-    }
+		return PolicyEvaluation(
+			shouldTriggerAction: thresholdReached,
+			policyID: policy.id,
+			actionKey: policy.actionKey,
+			currentCount: currentCount,
+			threshold: policy.threshold,
+			reason: reason,
+		)
+	}
 
-    /// Evaluates if the cooldown period is still active for a policy.
-    ///
-    /// - Parameter policy: The policy with cooldown to check
-    /// - Returns: A ``PolicyEvaluation`` with `shouldTriggerAction = false` if cooldown is active,
-    ///            or `nil` if cooldown has expired or no previous action exists
-    private func evaluateCooldownState(policy: EventPolicy) async -> PolicyEvaluation? {
-        guard let lastActionTimestamp = await eventStateRepository.getLastActionTriggeredTimestamp(
-            policyID: policy.id,
-        ) else {
-            return nil // No previous action, allow triggering
-        }
+	/// Spends the policy's cycle: resets its counter, starts its cooldown when it
+	/// has one, and logs the reset.
+	///
+	/// Call it for a ``PolicyCommitMode/deferred`` policy once its triggered action
+	/// actually happened. It acts unconditionally, so call it once per performed
+	/// action; committing again restarts the cooldown from now.
+	///
+	/// - Parameter policy: The policy whose cycle is spent
+	public func commit(_ policy: EventPolicy) async {
+		await resetCounterAndSaveTimestamp(policy: policy)
+		logger.logPolicyReset(policyID: policy.id)
+	}
 
-        let currentTimeMillis = timeProvider.currentTimeMillis()
-        let elapsedTimeMillis = currentTimeMillis - lastActionTimestamp
-        let elapsedMinutes = elapsedTimeMillis / Self.millisPerMinute
+	/// Evaluates if the cooldown period is still active for a policy.
+	///
+	/// - Parameter policy: The policy with cooldown to check
+	/// - Returns: A ``PolicyEvaluation`` with `shouldTriggerAction = false` if cooldown is active,
+	///            or `nil` if cooldown has expired or no previous action exists
+	private func evaluateCooldownState(policy: EventPolicy) async -> PolicyEvaluation? {
+		guard let lastActionTimestamp = await eventStateRepository.getLastActionTriggeredTimestamp(
+			policyID: policy.id,
+		) else {
+			return nil // No previous action, allow triggering
+		}
 
-        if elapsedMinutes >= Int64(policy.cooldownMinutes) {
-            return nil // Cooldown expired, continue with threshold check
-        }
+		let currentTimeMillis = timeProvider.currentTimeMillis()
+		let elapsedTimeMillis = currentTimeMillis - lastActionTimestamp
+		let elapsedMinutes = elapsedTimeMillis / Self.millisPerMinute
 
-        // Cooldown still active, calculate remaining time
-        let currentCount = await getCurrentCount(policy: policy)
-        let remainingTimeMillis = (Int64(policy.cooldownMinutes) * Self.millisPerMinute) - elapsedTimeMillis
-        let remainingMinutes = remainingTimeMillis / Self.millisPerMinute
-        let remainingSeconds = (remainingTimeMillis % Self.millisPerMinute) / Self.millisPerSecond
+		if elapsedMinutes >= Int64(policy.cooldownMinutes) {
+			return nil // Cooldown expired, continue with threshold check
+		}
 
-        let cooldownReason = buildCooldownReason(
-            elapsedMinutes: elapsedMinutes,
-            totalMinutes: policy.cooldownMinutes,
-            remainingMinutes: remainingMinutes,
-            remainingSeconds: remainingSeconds,
-        )
+		// Cooldown still active, calculate remaining time
+		let currentCount = await getCurrentCount(policy: policy)
+		let remainingTimeMillis = (Int64(policy.cooldownMinutes) * Self.millisPerMinute) - elapsedTimeMillis
+		let remainingMinutes = remainingTimeMillis / Self.millisPerMinute
+		let remainingSeconds = (remainingTimeMillis % Self.millisPerMinute) / Self.millisPerSecond
 
-        return PolicyEvaluation(
-            shouldTriggerAction: false,
-            policyID: policy.id,
-            actionKey: policy.actionKey,
-            currentCount: currentCount,
-            threshold: policy.threshold,
-            reason: cooldownReason,
-        )
-    }
+		let cooldownReason = buildCooldownReason(
+			elapsedMinutes: elapsedMinutes,
+			totalMinutes: policy.cooldownMinutes,
+			remainingMinutes: remainingMinutes,
+			remainingSeconds: remainingSeconds,
+		)
 
-    /// Resets the policy counter and saves the current timestamp for cooldown tracking.
-    ///
-    /// Called automatically when an action is triggered to prepare for the next cycle.
-    ///
-    /// - Parameter policy: The policy whose state should be reset
-    private func resetCounterAndSaveTimestamp(policy: EventPolicy) async {
-        await eventStateRepository.resetCount(policyID: policy.id)
+		return PolicyEvaluation(
+			shouldTriggerAction: false,
+			policyID: policy.id,
+			actionKey: policy.actionKey,
+			currentCount: currentCount,
+			threshold: policy.threshold,
+			reason: cooldownReason,
+		)
+	}
 
-        if policy.cooldownMinutes > 0 {
-            await eventStateRepository.setLastActionTriggeredTimestamp(
-                policyID: policy.id,
-                timestamp: timeProvider.currentTimeMillis(),
-            )
-        }
-    }
+	/// Resets the policy counter and saves the current timestamp for cooldown tracking.
+	///
+	/// Called when a cycle is committed to prepare for the next one.
+	///
+	/// - Parameter policy: The policy whose state should be reset
+	private func resetCounterAndSaveTimestamp(policy: EventPolicy) async {
+		await eventStateRepository.resetCount(policyID: policy.id)
 
-    /// Builds a human-readable reason string for cooldown state.
-    ///
-    /// - Parameters:
-    ///   - elapsedMinutes: Minutes elapsed since last action
-    ///   - totalMinutes: Total cooldown period in minutes
-    ///   - remainingMinutes: Minutes remaining in cooldown period
-    ///   - remainingSeconds: Seconds remaining (in addition to minutes)
-    /// - Returns: Formatted string describing cooldown state
-    private func buildCooldownReason(
-        elapsedMinutes: Int64,
-        totalMinutes: Int,
-        remainingMinutes: Int64,
-        remainingSeconds: Int64,
-    ) -> String {
-        "Cooldown active (\(elapsedMinutes)/\(totalMinutes) min elapsed, " +
-            "\(remainingMinutes)m \(remainingSeconds)s remaining)"
-    }
+		if policy.cooldownMinutes > 0 {
+			await eventStateRepository.setLastActionTriggeredTimestamp(
+				policyID: policy.id,
+				timestamp: timeProvider.currentTimeMillis(),
+			)
+		}
+	}
 
-    /// Builds a human-readable reason string for threshold evaluation.
-    ///
-    /// - Parameters:
-    ///   - thresholdReached: Whether the threshold was reached
-    ///   - currentCount: Current counter value
-    ///   - threshold: Required threshold value
-    /// - Returns: Formatted string describing threshold state
-    private func buildEvaluationReason(
-        thresholdReached: Bool,
-        currentCount: Int,
-        threshold: Int,
-    ) -> String {
-        if thresholdReached {
-            return "Threshold reached (\(currentCount)/\(threshold))"
-        } else {
-            let remaining = threshold - currentCount
-            return "Threshold not reached (\(currentCount)/\(threshold), \(remaining) remaining)"
-        }
-    }
+	/// Builds a human-readable reason string for cooldown state.
+	///
+	/// - Parameters:
+	///   - elapsedMinutes: Minutes elapsed since last action
+	///   - totalMinutes: Total cooldown period in minutes
+	///   - remainingMinutes: Minutes remaining in cooldown period
+	///   - remainingSeconds: Seconds remaining (in addition to minutes)
+	/// - Returns: Formatted string describing cooldown state
+	private func buildCooldownReason(
+		elapsedMinutes: Int64,
+		totalMinutes: Int,
+		remainingMinutes: Int64,
+		remainingSeconds: Int64,
+	) -> String {
+		"Cooldown active (\(elapsedMinutes)/\(totalMinutes) min elapsed, " +
+			"\(remainingMinutes)m \(remainingSeconds)s remaining)"
+	}
 
-    /// Retrieves the current counter value for a policy.
-    ///
-    /// - Parameter policy: The policy whose counter to retrieve
-    /// - Returns: Current count (step occurrences for single-step patterns,
-    ///            sequence completions for multi-step patterns)
-    private func getCurrentCount(policy: EventPolicy) async -> Int {
-        await eventStateRepository.getCount(policyID: policy.id)
-    }
+	/// Builds a human-readable reason string for threshold evaluation.
+	///
+	/// - Parameters:
+	///   - thresholdReached: Whether the threshold was reached
+	///   - currentCount: Current counter value
+	///   - threshold: Required threshold value
+	/// - Returns: Formatted string describing threshold state
+	private func buildEvaluationReason(
+		thresholdReached: Bool,
+		currentCount: Int,
+		threshold: Int,
+	) -> String {
+		if thresholdReached {
+			return "Threshold reached (\(currentCount)/\(threshold))"
+		} else {
+			let remaining = threshold - currentCount
+			return "Threshold not reached (\(currentCount)/\(threshold), \(remaining) remaining)"
+		}
+	}
+
+	/// Retrieves the current counter value for a policy.
+	///
+	/// - Parameter policy: The policy whose counter to retrieve
+	/// - Returns: Current count (step occurrences for single-step patterns,
+	///            sequence completions for multi-step patterns)
+	private func getCurrentCount(policy: EventPolicy) async -> Int {
+		await eventStateRepository.getCount(policyID: policy.id)
+	}
 }
