@@ -13,6 +13,7 @@ public extension EventPolicy {
 		threshold: Int,
 		cooldownMinutes: Int = 0,
 		persistAcrossSessions: Bool = true,
+		commitMode: PolicyCommitMode = .onTrigger,
 	) -> EventPolicy {
 		EventPolicy(
 			id: id,
@@ -21,6 +22,7 @@ public extension EventPolicy {
 			threshold: threshold,
 			cooldownMinutes: cooldownMinutes,
 			persistAcrossSessions: persistAcrossSessions,
+			commitMode: commitMode,
 		)
 	}
 
@@ -33,6 +35,7 @@ public extension EventPolicy {
 		strict: Bool = true,
 		cooldownMinutes: Int = 0,
 		persistAcrossSessions: Bool = true,
+		commitMode: PolicyCommitMode = .onTrigger,
 	) -> EventPolicy {
 		EventPolicy(
 			id: id,
@@ -41,6 +44,7 @@ public extension EventPolicy {
 			threshold: threshold,
 			cooldownMinutes: cooldownMinutes,
 			persistAcrossSessions: persistAcrossSessions,
+			commitMode: commitMode,
 		)
 	}
 }

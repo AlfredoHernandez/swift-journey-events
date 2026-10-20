@@ -68,78 +68,88 @@
 /// - SeeAlso: ``PolicyEvaluation`` for evaluation results
 /// - SeeAlso: ``EvaluateEventPolicy`` for the evaluation use case
 public struct EventPolicy: Sendable, Equatable {
-    /// Unique identifier for this policy.
-    ///
-    /// Used to track state and distinguish between different policies.
-    /// Must be unique across all policies in your app.
-    public let id: String
+	/// Unique identifier for this policy.
+	///
+	/// Used to track state and distinguish between different policies.
+	/// Must be unique across all policies in your app.
+	public let id: String
 
-    /// The action identifier to trigger when conditions are met.
-    ///
-    /// This key is returned in ``PolicyEvaluation/actionKey`` and can represent:
-    /// - Ad unit IDs (e.g., "ca-app-pub-xxx/yyy")
-    /// - Analytics event names (e.g., "show_rating_prompt")
-    /// - Feature flags (e.g., "enable_premium_feature")
-    /// - Any custom action identifier your app needs
-    public let actionKey: String
+	/// The action identifier to trigger when conditions are met.
+	///
+	/// This key is returned in ``PolicyEvaluation/actionKey`` and can represent:
+	/// - Ad unit IDs (e.g., "ca-app-pub-xxx/yyy")
+	/// - Analytics event names (e.g., "show_rating_prompt")
+	/// - Feature flags (e.g., "enable_premium_feature")
+	/// - Any custom action identifier your app needs
+	public let actionKey: String
 
-    /// The journey pattern that activates this policy.
-    ///
-    /// Defines which user steps must occur before this policy can trigger.
-    /// See ``JourneyPattern`` for pattern types and examples.
-    public let pattern: JourneyPattern
+	/// The journey pattern that activates this policy.
+	///
+	/// Defines which user steps must occur before this policy can trigger.
+	/// See ``JourneyPattern`` for pattern types and examples.
+	public let pattern: JourneyPattern
 
-    /// The number of times the pattern must be fulfilled before triggering the action.
-    ///
-    /// For single-step patterns: Number of occurrences required.
-    /// For multi-step patterns: Number of sequence completions required.
-    ///
-    /// Example: `threshold = 5` means the pattern must occur 5 times.
-    public let threshold: Int
+	/// The number of times the pattern must be fulfilled before triggering the action.
+	///
+	/// For single-step patterns: Number of occurrences required.
+	/// For multi-step patterns: Number of sequence completions required.
+	///
+	/// Example: `threshold = 5` means the pattern must occur 5 times.
+	public let threshold: Int
 
-    /// Minimum wait time in minutes between consecutive action triggers.
-    ///
-    /// Controls rate-limiting to prevent actions from triggering too frequently:
-    /// - `0`: No cooldown (action triggers immediately when threshold is reached)
-    /// - `> 0`: Enforces minimum wait time between triggers
-    ///
-    /// Example: `cooldownMinutes = 15` ensures at least 15 minutes between actions,
-    /// even if the threshold is reached multiple times.
-    ///
-    /// - Note: Counter continues accumulating during cooldown but won't trigger until cooldown expires.
-    public let cooldownMinutes: Int
+	/// Minimum wait time in minutes between consecutive action triggers.
+	///
+	/// Controls rate-limiting to prevent actions from triggering too frequently:
+	/// - `0`: No cooldown (action triggers immediately when threshold is reached)
+	/// - `> 0`: Enforces minimum wait time between triggers
+	///
+	/// Example: `cooldownMinutes = 15` ensures at least 15 minutes between actions,
+	/// even if the threshold is reached multiple times.
+	///
+	/// - Note: Counter continues accumulating during cooldown but won't trigger until cooldown expires.
+	public let cooldownMinutes: Int
 
-    /// Determines whether counter state persists between app sessions.
-    ///
-    /// - `true`: Counters persist using ``UserDefaultsEventStateRepository`` (survive app restarts)
-    /// - `false`: Counters use ``InMemoryEventStateRepository`` (reset on app restart)
-    ///
-    /// Use persistent storage for long-term user behavior tracking.
-    /// Use in-memory storage for session-only or testing scenarios.
-    public let persistAcrossSessions: Bool
+	/// Determines whether counter state persists between app sessions.
+	///
+	/// - `true`: Counters persist using ``UserDefaultsEventStateRepository`` (survive app restarts)
+	/// - `false`: Counters use ``InMemoryEventStateRepository`` (reset on app restart)
+	///
+	/// Use persistent storage for long-term user behavior tracking.
+	/// Use in-memory storage for session-only or testing scenarios.
+	public let persistAcrossSessions: Bool
 
-    /// Creates a new event policy.
-    ///
-    /// - Parameters:
-    ///   - id: Unique identifier for this policy
-    ///   - actionKey: Action identifier to trigger (e.g., ad unit ID, event name)
-    ///   - pattern: Journey pattern that activates this policy
-    ///   - threshold: Number of times pattern must occur before triggering
-    ///   - cooldownMinutes: Minimum minutes between triggers (default: 0)
-    ///   - persistAcrossSessions: Whether to persist state across sessions (default: true)
-    public init(
-        id: String,
-        actionKey: String,
-        pattern: JourneyPattern,
-        threshold: Int,
-        cooldownMinutes: Int = 0,
-        persistAcrossSessions: Bool = true,
-    ) {
-        self.id = id
-        self.actionKey = actionKey
-        self.pattern = pattern
-        self.threshold = threshold
-        self.cooldownMinutes = cooldownMinutes
-        self.persistAcrossSessions = persistAcrossSessions
-    }
+	/// When a triggered evaluation spends the policy's cycle.
+	///
+	/// Defaults to ``PolicyCommitMode/onTrigger``. Use ``PolicyCommitMode/deferred``
+	/// when the triggered action can fail or be skipped, and commit the cycle with
+	/// ``EventTracker/commit(policyID:)`` only once the action actually happened.
+	public let commitMode: PolicyCommitMode
+
+	/// Creates a new event policy.
+	///
+	/// - Parameters:
+	///   - id: Unique identifier for this policy
+	///   - actionKey: Action identifier to trigger (e.g., ad unit ID, event name)
+	///   - pattern: Journey pattern that activates this policy
+	///   - threshold: Number of times pattern must occur before triggering
+	///   - cooldownMinutes: Minimum minutes between triggers (default: 0)
+	///   - persistAcrossSessions: Whether to persist state across sessions (default: true)
+	///   - commitMode: When a triggered evaluation spends the cycle (default: ``PolicyCommitMode/onTrigger``)
+	public init(
+		id: String,
+		actionKey: String,
+		pattern: JourneyPattern,
+		threshold: Int,
+		cooldownMinutes: Int = 0,
+		persistAcrossSessions: Bool = true,
+		commitMode: PolicyCommitMode = .onTrigger,
+	) {
+		self.id = id
+		self.actionKey = actionKey
+		self.pattern = pattern
+		self.threshold = threshold
+		self.cooldownMinutes = cooldownMinutes
+		self.persistAcrossSessions = persistAcrossSessions
+		self.commitMode = commitMode
+	}
 }

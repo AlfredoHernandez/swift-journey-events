@@ -9,6 +9,7 @@ A Swift package for tracking user journey events and triggering actions based on
 - **Flexible Matching**: Strict (exact order) or loose (allows intermediate steps)
 - **Thresholds**: Trigger actions after N occurrences
 - **Cooldowns**: Prevent repeated triggers within a time window
+- **Deferred Commit**: Spend a policy's cycle only once its action actually happened
 - **Async Streams**: Subscribe to policy triggers with `AsyncStream`
 - **Swift 6 Concurrency**: Full actor isolation and `Sendable` compliance
 - **Pluggable Logging**: Bring your own `JourneyLogger` to bridge into any telemetry pipeline
@@ -27,7 +28,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/AlfredoHernandez/swift-journey-events.git", from: "2.0.0")
+    .package(url: "https://github.com/AlfredoHernandez/swift-journey-events.git", from: "2.1.0")
 ]
 ```
 
@@ -202,6 +203,36 @@ if evaluation.shouldTriggerAction {
     print("Reason: \(evaluation.reason)")
 }
 ```
+
+### Deferred Commit
+
+By default, the evaluation that reaches a policy's threshold spends its cycle on
+the spot: the counter resets and the cooldown starts, whether or not the action
+then happens. When the action can be skipped or fail (an ad that is not loaded
+yet, a prompt that cannot be shown right now), opt the policy into
+`PolicyCommitMode.deferred` and commit the cycle only once the action happened:
+
+```swift
+EventPolicy(
+    id: "article_interstitial",
+    actionKey: "show_interstitial",
+    pattern: JourneyPattern(steps: ["article_viewed"]),
+    threshold: 3,
+    cooldownMinutes: 10,
+    commitMode: .deferred
+)
+
+for await evaluation in eventTracker.policyTriggers {
+    if await presentInterstitial() {
+        await eventTracker.commit(policyID: evaluation.policyID)
+    }
+}
+```
+
+Until it is committed, a deferred policy keeps counting and triggers again on
+every eligible step, so a skipped action gets another chance right away instead
+of waiting a whole new cycle. `commit(policyID:)` resets the counter and starts
+the cooldown; call it once per performed action. It returns `false` and changes nothing for an unknown or on-trigger policy.
 
 ## Architecture
 
